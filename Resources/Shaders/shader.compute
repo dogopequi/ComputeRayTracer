@@ -1,0 +1,489 @@
+#version 450
+#define MAX_SPHERES 100
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(rgba32f, binding = 0) uniform highp image2D destTex;
+layout(std140, binding = 1) buffer SphereBuffer1 {
+  vec4 spheresBuffer1[];
+};
+layout(std140, binding = 2) buffer SphereBuffer2 {
+  vec4 spheresBuffer2[];
+};
+layout(std140, binding = 3) buffer SphereBuffer3 {
+  vec4 spheresBuffer3[];
+};
+layout(std140, binding = 4) buffer SphereBuffer4 {
+  vec4 spheresBuffer4[];
+};
+
+uniform float aspectRatio;
+uniform int height;
+uniform int width;
+uniform int sphereCount;
+uniform float random;
+uniform int bounces;
+uniform int samples;
+uniform float FOV;
+uniform float defocusAngle;
+uniform float focusDist;
+uniform bool shouldBlur;
+uniform float time;
+uniform float frame;
+uniform vec3 BackGroundColor;
+
+uniform vec3 lookFrom;
+uniform vec3 lookAt;
+uniform vec3 vUp;
+
+const float minRayLength = 0.0001;
+const float maxRayLength = 100000.0;
+const float infinity = uintBitsToFloat(0x7F800000);
+const float pi = 3.1415926535897932385;
+
+const float Metal = 1.0;
+const float Lambertian = 2.0;
+const float Dialetric = 3.0;
+const float Emissive = 4.0;
+struct Interval
+{
+  float min;
+  float max;
+};
+
+struct Material
+{
+  float index;
+  vec3 color;
+  float fuzziness;
+  float refraction;
+  float emissionPower;
+};
+
+struct Sphere
+{
+  vec3 center;
+  float radius;
+  Material material;
+  vec3 center2;
+  bool isMoving;
+};
+Sphere spheres[MAX_SPHERES];
+
+struct HitRecord
+{
+  vec3 point;
+  vec3 normal;
+  Material material;
+  float t;
+  bool frontFace;
+};
+
+struct Ray
+{
+    vec3 center;
+    vec3 direction;
+    float time;
+};
+
+vec3 sphereCenter(inout float time, inout Sphere s)
+{
+  return s.center + time*(s.center2 - s.center);
+}
+
+vec2 hash22(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+  p3 += dot(p3, p3.yzx+33.33);
+  return fract((p3.xx+p3.yz)*p3.zy);
+}
+
+uint baseHash(uvec2 p)
+{
+    p = 1103515245U * ((p >> 1U) ^ (p.yx));
+    uint h32 = 1103515245U * ((p.x) ^ (p.y>>3U));
+    return h32 ^ (h32 >> 16);
+}
+vec3 getEmission(inout Material material)
+{
+  return material.color * material.emissionPower;
+}
+
+float hash1(float seed) {
+  uint n = baseHash(floatBitsToUint(vec2(seed += 0.1,seed += 0.1)));
+  return float(n) / float(0xffffffffU);
+}
+
+vec2 hash2(float seed) {
+  uint n = baseHash(floatBitsToUint(vec2(seed += 0.1,seed += 0.1)));
+  uvec2 rz = uvec2(n, n * 48271U);
+  return vec2(rz.xy & uvec2(0x7fffffffU)) / float(0x7fffffff);
+}
+
+vec3 hash3(inout float seed)
+{
+    uint n = baseHash(floatBitsToUint(vec2(seed += 0.1, seed += 0.1)));
+    uvec3 rz = uvec3(n, n * 16807U, n * 48271U);
+    return vec3(rz & uvec3(0x7fffffffU)) / float(0x7fffffff);
+}
+
+vec2 randomInUnitDisk(inout float seed) {
+  vec2 h = hash2(seed) * vec2(1.0, 6.28318530718);
+  float phi = h.y;
+  float r = sqrt(h.x);
+return r * vec2(sin(phi), cos(phi));
+}
+
+float randomFloat(inout float seed, float min, float max)
+{
+  return min + (max - min) * hash1(seed);
+}
+
+vec3 randomVector(inout float seed, float min, float max)
+{
+  float t = hash1(seed * time * gl_GlobalInvocationID.x);
+  float t2 = hash1(seed /time * gl_GlobalInvocationID.y);
+  return vec3(randomFloat(t, min, max), randomFloat(t2, min, max), randomFloat(seed, min, max));
+}
+
+vec3 randomInUnitSphere(inout float seed, inout vec2 p)
+{
+while (true) 
+{
+  vec3 h = randomVector(seed, -1.0, 1.0);
+  if (dot(h, h) < 1.0)
+  {
+      return h;
+  }
+}
+}
+
+float Gamma(float component)
+{
+  return sqrt(component);
+}
+
+float reflectance(float cosine, float ref_idx) 
+{
+  //Schlick's approximation
+  float r0 = (1. - ref_idx) / (1. + ref_idx);
+  r0 = r0 * r0;
+  return r0 + (1 - r0) * pow((1 - cosine), 5);
+}
+
+vec3 Emitted(inout Material material)
+{
+  if(material.index == 4.0)
+  {
+    if(material.emissionPower > 0.0)
+    {
+      return getEmission(material);
+    }
+  }
+
+  return material.color;
+}
+
+bool Scatter(inout Ray ray, inout HitRecord record, inout vec3 color, inout Ray scattered, inout float seed, inout vec2 p)
+{
+  if(record.material.index == Lambertian)
+  {
+  vec3 scatterDir = record.normal + normalize(randomInUnitSphere(seed, p));
+
+  scattered.center = record.point;
+  scattered.direction = scatterDir;
+  scattered.time = ray.time;
+  color = record.material.color;
+  return true;
+ }
+
+ if(record.material.index == Metal)
+ {
+  vec3 direction = normalize(ray.direction);
+  vec3 normal = record.normal;
+  vec3 reflected = reflect(direction, normal);
+  scattered.center = record.point;
+  scattered.direction = (reflected + record.material.fuzziness * normalize(randomInUnitSphere(seed, p)));
+  scattered.time = ray.time;
+
+  color = record.material.color;
+  return dot(scattered.direction, record.normal) > 0.0;
+ }
+
+ if(record.material.index == Dialetric)
+ {
+  color = vec3(1.0);
+  float refractionRatio = record.frontFace ? (1.0/record.material.refraction) : record.material.refraction;
+  vec3 unitDirection = normalize(ray.direction);
+  float cos_theta = min(dot(-unitDirection, record.normal), 1.0);
+  float sin_theta = sqrt(1.0 - cos_theta*cos_theta);
+
+  bool cannotRefract = refractionRatio * sin_theta > 1.0;
+  vec3 direction;
+
+  if(cannotRefract || reflectance(cos_theta, refractionRatio) > hash1(seed))
+  {
+    direction = reflect(unitDirection, record.normal);
+  }
+  else
+  {
+    direction = refract(unitDirection, record.normal, refractionRatio);
+  }
+
+  scattered.center = record.point;
+  scattered.direction = direction;
+  scattered.time = ray.time;
+  return true;
+ }
+
+ if(record.material.index == Emissive)
+ {
+   color = vec3(0.0);
+   return false;
+ }
+}
+
+vec3 pixelSampleSquare(inout float seed, in vec3 pdU, in vec3 pdV)
+{
+  float px = -0.5 + hash1(seed);
+  float py = -0.5 + hash1(seed);
+  return (px * pdU) + (py * pdV);
+}
+
+bool SurroundsInterval(inout Interval interval, in float x)
+{
+  return interval.min < x && x < interval.max;
+}
+
+bool ContainsInterval(inout Interval interval, in float x)
+{
+  return interval.min <= x && x <= interval.max;
+}
+
+void HitRecordSetFaceNormal(inout HitRecord record, inout Ray ray, inout vec3 outwardNormal)
+{
+  record.frontFace = (dot(ray.direction, outwardNormal) < 0.0);
+  if (record.frontFace) 
+  {
+    record.normal = outwardNormal;
+  } 
+  else 
+  {
+    record.normal = -outwardNormal;
+  }
+}
+vec3 RayAt(inout Ray ray, inout float t)
+{
+    return ray.center + t * ray.direction;
+}
+
+vec3 defocusDiskSample(inout float seed, inout vec3 defocusDiskU, inout vec3 defocusDiskV, inout vec3 center)
+{
+  vec2 p = hash2(seed);
+  return center + (p.x * defocusDiskU) + (p.y * defocusDiskV);
+}
+
+bool HitSphere(inout Sphere sphere, inout Ray ray, in Interval interval, inout HitRecord record)
+{
+  vec3 center = sphere.isMoving ? sphereCenter(ray.time, sphere) : sphere.center;
+  vec3 oc = ray.center - center;
+  float a = dot(ray.direction, ray.direction);
+  float half_b = dot(oc, ray.direction);
+  float c = dot(oc, oc) - sphere.radius * sphere.radius;
+  float discriminant = half_b * half_b - a * c;
+  if(discriminant < 0)
+  {
+    return false;
+  }
+  float sqrtD = sqrt(discriminant);
+
+  float root = (-half_b - sqrtD) / a;
+  if(!SurroundsInterval(interval, root))
+  {
+    root = (-half_b + sqrtD) / a;
+    if(!SurroundsInterval(interval, root))
+    {
+      return false;
+    }
+  }
+  record.t = root;
+  record.point = RayAt(ray, record.t);
+  vec3 outwardNormal = (record.point - sphere.center) / sphere.radius;
+  HitRecordSetFaceNormal(record, ray, outwardNormal);
+  record.material = sphere.material;
+ 
+  return true;
+}
+
+bool WorldHit(inout Ray ray, in Interval interval, inout HitRecord record)
+{
+  HitRecord tempRecord;
+  bool hitAnything = false;
+  float closestSoFar = interval.max;
+
+  for(int i = 0; i < sphereCount; i++)
+  {
+    Interval tempInterval;
+    tempInterval.min = interval.min;
+    tempInterval.max = closestSoFar;
+    if(HitSphere(spheres[i], ray, tempInterval, tempRecord))
+    {
+      hitAnything = true;
+      closestSoFar = tempRecord.t;
+      record = tempRecord;
+    }
+  }
+  return hitAnything;
+}
+
+vec3 rayColor(inout Ray ray, inout float seed, inout vec2 p)
+{
+  vec3 incomingLight = vec3(0.0);
+  HitRecord record;
+  vec3 colour = vec3(1.0);
+  Ray scattered;
+  vec3 attenuation;
+  int depth;
+  for(depth = 0; depth < bounces; depth++)
+    {
+      if(WorldHit(ray, Interval(0.0001, infinity), record))
+      {
+        vec3 colorFromEmission = Emitted(record.material);
+        if(Scatter(ray, record, attenuation, scattered, seed, p))
+        {
+          colour *= attenuation;
+          ray = scattered;
+        }
+        else
+        {
+         return incomingLight += colorFromEmission;
+        }
+      }
+      else
+      {
+        vec3 unitDir = normalize(scattered.direction);
+        float a = 0.5 * (unitDir.y + 1.0);
+        return colour *= BackGroundColor * ((1.0 - a) * vec3(1.0, 1.0, 1.0) + a * vec3(0.5, 0.7, 1.0));
+      }
+    }
+  return incomingLight;
+  }
+
+vec3 writeColor(inout vec3 color)
+{
+  float r = color.x;
+  float g = color.y;
+  float b = color.z;
+
+  float scale = 1.0 / samples;
+  r *= scale;
+  g *= scale;
+  b *= scale;
+
+  r = Gamma(r);
+  g = Gamma(g);
+  b = Gamma(b);
+
+ return vec3(clamp(0.000, 0.999, r), clamp(0.000, 0.999, g), clamp(0.000, 0.999, b));
+}
+
+void main() 
+{
+  for (int i = 0; i < sphereCount; ++i) 
+  {
+    if( i == MAX_SPHERES - 1)
+    {
+      break;
+    }
+    int bufferIndex = i;
+    vec4 sphereData1 = spheresBuffer1[bufferIndex];
+    spheres[i].center = sphereData1.xyz;
+    spheres[i].radius = sphereData1.w;
+    vec4 sphereData2 = spheresBuffer2[bufferIndex];
+    spheres[i].material.color = sphereData2.xyz;
+    spheres[i].material.index = sphereData2.w;
+    vec4 sphereData3 = spheresBuffer3[bufferIndex];
+    spheres[i].material.fuzziness = sphereData3.x;
+    spheres[i].material.refraction = sphereData3.y;
+    spheres[i].material.emissionPower = sphereData3.z;
+    vec4 sphereData4 = spheresBuffer4[bufferIndex];
+    spheres[i].center2 = sphereData4.xyz;
+    if(sphereData4.w == 1.0)
+    {
+      spheres[i].isMoving = true;
+    }
+    else
+    {
+      spheres[i].isMoving = false;
+    }
+  }
+
+// vec3 lookFrom = vec3(cos(time), 2.0, sin(time));
+
+vec3 CameraCenter = lookFrom;
+
+float FocalLength = length(lookFrom - lookAt);
+float theta = radians(FOV);
+float h = tan(theta / 2.);
+float ViewportHeight;
+if(shouldBlur){
+  ViewportHeight = 2.0 * h * focusDist;
+}
+else{
+  ViewportHeight = 2.0 * h * FocalLength;
+}
+
+float ViewportWidth = ViewportHeight * float(width) / float(height);
+
+
+vec3 w = normalize(lookFrom - lookAt);
+vec3 u = normalize(cross(vUp, w));
+vec3 v = cross(w, u);
+
+vec3 Viewport_U = (ViewportWidth * u);
+vec3 Viewport_V = (ViewportHeight * -v);
+
+vec3 PixelDelta_U = vec3(Viewport_U / float(width));
+
+vec3 PixelDelta_V = vec3(Viewport_V / float(height));
+
+vec3 ViewportUpperLeft;
+if(shouldBlur){
+  ViewportUpperLeft = (CameraCenter - (focusDist * w) - (Viewport_U/2) - (Viewport_V/2));
+}
+else{
+  ViewportUpperLeft = (CameraCenter - (Viewport_U/2) - (Viewport_V/2) - (FocalLength * w));
+}
+
+vec3 Pixel00_Loc = vec3(ViewportUpperLeft + 0.5 * (PixelDelta_U + PixelDelta_V));
+
+float defocusRadius = focusDist * tan(radians(defocusAngle/2));
+vec3 defocusDiskU = u * defocusRadius;
+vec3 defocusDiskV = v * defocusRadius;
+
+ivec2 storePos = ivec2(gl_GlobalInvocationID.xy);
+
+vec3 PixelCenter = (Pixel00_Loc + (float(storePos.x) * PixelDelta_U) + (float(storePos.y) * PixelDelta_V));
+
+vec2 state = vec2(0.0);
+vec3 color = vec3(0.0, 0.0, 0.0);
+for(int i = 0; i < samples; i++)
+{
+  state = hash22(gl_GlobalInvocationID.xy * random);
+
+  float seed = float(baseHash(floatBitsToUint(state)));
+  vec3 PixelSample = PixelCenter + pixelSampleSquare(seed, PixelDelta_U, PixelDelta_V);
+  Ray ray;
+  if(shouldBlur){
+  ray.center = (defocusAngle <= 0) ? CameraCenter : defocusDiskSample(seed, defocusDiskU, defocusDiskV, CameraCenter);
+  }
+  else{
+  ray.center = CameraCenter;
+  }
+  ray.time = time;
+  ray.direction = normalize(PixelSample - ray.center);
+  color += rayColor(ray, seed, state);
+}
+
+// vec3 outColor = color / samples;
+
+ imageStore(destTex, storePos, vec4(writeColor(color), 1.0));
+}

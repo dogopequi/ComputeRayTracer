@@ -1,0 +1,34 @@
+#version 450
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(rgba32f, binding = 0) uniform highp image2D inTex;
+layout(rgba32f, binding = 1) uniform highp image2D mainTex;
+
+uniform int frame;
+uniform uvec2 imageSize;
+uniform int accumulate;
+
+void main()
+{
+    uvec2 pixelCoords = gl_GlobalInvocationID.xy;
+    if (pixelCoords.x < imageSize.x && pixelCoords.y < imageSize.y) 
+    {
+
+        vec4 currentColor = imageLoad(inTex, ivec2(pixelCoords));
+        vec4 accumulatedColor = imageLoad(mainTex, ivec2(pixelCoords));
+
+
+        float weight = 1.0 / (frame + 1);
+        float alpha = 0.3;
+        vec4 newAccumulatedColor = mix(accumulatedColor, currentColor, weight);
+
+        if(accumulate == 1)
+        {
+         imageStore(mainTex, ivec2(pixelCoords), newAccumulatedColor);
+        }
+        else
+        {
+        newAccumulatedColor = vec4(0.0);
+        imageStore(mainTex, ivec2(pixelCoords), currentColor);
+        }
+    }
+}

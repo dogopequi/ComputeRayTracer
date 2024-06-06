@@ -1,0 +1,130 @@
+#scene
+lookFrom -1.69 1.86 1.82
+lookAt -0.31 0.38 -0.24
+vUp 0.04 1.7 0
+defocusAngle 0.86
+focusDist 0.49
+blur 0
+fov 37.93
+BackgroundCol 0.2392160.3686270.717647
+
+#sphere
+pos -0.92 -100.5 0
+radius 100
+color 0.447059 0.133333 0.160784
+sPosition 0 0 0
+isMoving 0
+Epower 0
+index  2
+fuzz 1
+ref 1.5
+
+#sphere
+pos 0 0 -1.04
+radius 0.5
+color 0.101961 0.168627 0.462745
+sPosition 0 0.004 -0.95
+isMoving 0
+Epower 0
+index  2
+fuzz 1
+ref 1.5
+
+#sphere
+pos -1 0 -1
+radius 0.5
+color 0 0 0
+sPosition 0 0 0
+isMoving 0
+Epower 0
+index  3
+fuzz 1
+ref 1.5
+
+#sphere
+pos -1.01 0 -1
+radius -0.4
+color 0 0 0
+sPosition 0 0 0
+isMoving 0
+Epower 0
+index  3
+fuzz 1
+ref 1.5
+
+#sphere
+pos 1.02 0 -0.93
+radius 0.5
+color 0.0705882 0.521569 0.694118
+sPosition 1.02 0.002 -0.93
+isMoving 0
+Epower 0
+index  1
+fuzz 0
+ref 1.5
+
+#scene
+lookFrom -6.13 2.96 4.38
+lookAt 21.08 -6.76 -5.27
+vUp 0.64 4.52 -0.04
+defocusAngle -0.7
+focusDist 0.23
+blur 0
+fov 64.89
+BackgroundCol 0.01568630.03529410.0784314
+
+#sphere
+pos 6.25 26.69 -21.95
+radius 14.92
+color 0.215686 0.815686 0.905882
+sPosition 0 0 0
+isMoving 0
+Epower 0.62
+index  4
+fuzz 1.04
+ref 1.5
+
+#sphere
+pos 2.59 -101.43 0.33
+radius 100.72
+color 0.792157 0.415686 0.109804
+sPosition 0 0 0
+isMoving 0
+Epower 0
+index  2
+fuzz -0.72
+ref 1.5
+
+#sphere
+pos 1.17 0.48 0.36
+radius 0.89
+color 0 0 0
+sPosition 0 0 0
+isMoving 0
+Epower 0
+index  3
+fuzz 1
+ref 1.5
+
+#sphere
+pos -1.73 0.21 0.19
+radius 0.87
+color 0.247059 0.541176 0.411765
+sPosition 0 0 0
+isMoving 0
+Epower 0
+index  1
+fuzz 0
+ref 1.5
+
+#sphere
+pos 0.3 0.808 2.96
+radius 0.74
+color 0.996078 0.917647 0.0862745
+sPosition 0.3 0.316 2.58
+isMoving 0
+Epower 0
+index  2
+fuzz 1
+ref 1.5
+
