@@ -116,7 +116,6 @@ GLuint Shader::loadCompute()
         std::cout << "ERROR::SHADER::COMPUTE::COMPILATION_FAILED\n" <<
             infoLog << std::endl;
     };
-    // shader Program
     GLuint ID = glCreateProgram();
     glAttachShader(ID, compute);
     glLinkProgram(ID);
@@ -128,7 +127,6 @@ GLuint Shader::loadCompute()
         std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" <<
             infoLog << std::endl;
     }
-    // delete the shaders as they're linked into our program now and no longer necessary
     glDeleteShader(compute);
     std::cout << "Compute Shader Path: " << m_ComputePath << std::endl;
 

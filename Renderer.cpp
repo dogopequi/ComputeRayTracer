@@ -695,16 +695,15 @@ void Renderer::preRender(int width, int height)
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
     float vertices[] = {
-        // Positions       // Texture Coords
-        1.0f,  1.0f, 0.0f, 1.0f, 1.0f, // Top Right
-        1.0f, -1.0f, 0.0f, 1.0f, 0.0f, // Bottom Right
-       -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, // Bottom Left
-       -1.0f,  1.0f, 0.0f, 0.0f, 1.0f  // Top Left
+        1.0f,  1.0f, 0.0f, 1.0f, 1.0f, 
+        1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 
+       -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 
+       -1.0f,  1.0f, 0.0f, 0.0f, 1.0f 
     };
 
     unsigned int indices[] = {
-        0, 1, 3, // First triangle
-        1, 2, 3  // Second triangle
+        0, 1, 3,
+        1, 2, 3 
     };
 
     glGenBuffers(1, &VBO);
