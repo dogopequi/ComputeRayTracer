@@ -85,6 +85,17 @@ struct Ray
     float time;
 };
 
+bool isNan(float val)
+{
+    return !(val <= 0.0 || val >= 0.0); // This correctly detects NaN
+}
+
+bool isNanVec3(vec3 val)
+{
+    return isNan(val.x) || isNan(val.y) || isNan(val.z);
+}
+
+
 vec3 sphereCenter(inout float time, inout Sphere s)
 {
   return s.center + time*(s.center2 - s.center);
@@ -146,15 +157,21 @@ vec3 randomVector(inout float seed, float min, float max)
 
 vec3 randomInUnitSphere(inout float seed, inout vec2 p)
 {
-while (true) 
-{
-  vec3 h = randomVector(seed, -1.0, 1.0);
-  if (dot(h, h) < 1.0)
-  {
-      return h;
-  }
+    const int maxTries = 15; 
+    int count = 0;
+    
+    while (count < maxTries) 
+    {
+        vec3 h = randomVector(seed, -1.0, 1.0);
+        if (dot(h, h) < 1.0)
+        {
+            return h;
+        }
+        count++;
+    }
+    return normalize(randomVector(seed, -1.0, 1.0)); 
 }
-}
+
 
 float Gamma(float component)
 {
@@ -193,14 +210,16 @@ bool Scatter(inout Ray ray, inout HitRecord record, inout vec3 color, inout Ray 
   scattered.time = ray.time;
   color = record.material.color;
   return true;
- }
+  }
 
  if(record.material.index == Metal)
  {
   vec3 direction = normalize(ray.direction);
   vec3 normal = record.normal;
   vec3 reflected = reflect(direction, normal);
+
   scattered.center = record.point;
+
   scattered.direction = (reflected + record.material.fuzziness * normalize(randomInUnitSphere(seed, p)));
   scattered.time = ray.time;
 
@@ -340,6 +359,7 @@ vec3 rayColor(inout Ray ray, inout float seed, inout vec2 p)
   HitRecord record;
   vec3 colour = vec3(1.0);
   Ray scattered;
+  scattered.direction = vec3(0.0, 1.0, 0.0);
   vec3 attenuation;
   int depth;
   for(depth = 0; depth < bounces; depth++)
@@ -360,7 +380,7 @@ vec3 rayColor(inout Ray ray, inout float seed, inout vec2 p)
       else
       {
         vec3 unitDir = normalize(scattered.direction);
-        float a = 0.5 * (unitDir.y + 1.0);
+       float a = clamp(0.5 * (unitDir.y + 1.0), 0.0, 1.0);
         return colour *= BackGroundColor * ((1.0 - a) * vec3(1.0, 1.0, 1.0) + a * vec3(0.5, 0.7, 1.0));
       }
     }
@@ -382,7 +402,8 @@ vec3 writeColor(inout vec3 color)
   g = Gamma(g);
   b = Gamma(b);
 
- return vec3(clamp(0.000, 0.999, r), clamp(0.000, 0.999, g), clamp(0.000, 0.999, b));
+return vec3(clamp(r, 0.000, 0.999), clamp(g, 0.000, 0.999), clamp(b, 0.000, 0.999));
+
 }
 
 void main() 
